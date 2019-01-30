@@ -17,6 +17,7 @@ import skimage
 from PIL import Image
 
 TRAIN_LIST_NAME = 'train.csv'
+TEST_LIST_NAME = 'sample_submission.csv'
 IMG_COLORS = [
     'green', # protein of interest
     'blue', # nucleus
@@ -26,15 +27,20 @@ IMG_COLORS = [
 
 def collater(data):
     imgs = [s['image'] for s in data]
-    annos = [s['anno'] for s in data]
-
     imgs = torch.stack(imgs)
-    annos = torch.stack(annos)
 
-    return {
-        'images': imgs,
-        'annos': annos
-    }
+    if 'anno' in data[0].keys():
+        annos = [s['anno'] for s in data]
+        annos = torch.stack(annos)
+
+        return {
+            'images': imgs,
+            'annos': annos
+        }
+    else:
+        return {
+            'images': imgs
+        }
 
 class CsvDataset(Dataset):
     def __init__(self, csv_path, data_root, num_classes, phase='train', label='multi', augment=None):
@@ -48,18 +54,15 @@ class CsvDataset(Dataset):
         if self.phase == 'train' or self.phase == 'val':
             self.anno_df = pd.read_csv(os.path.join(self.data_root, TRAIN_LIST_NAME))
             self.image_path = os.path.join(self.data_root, 'train')
+            self.image_ids = list(pd.read_csv(self.csv_path)['id'])
+
+            annos = list(self.anno_df['Target'])
+            self.annotations = [[int(pos) for pos in anno.split(' ')] for anno in annos]
         else: # test
             self.image_path = os.path.join(self.data_root, 'test')
-        
-        self.image_ids = list(pd.read_csv(self.csv_path)['id'])
 
-        self.samples = []
-        for image_id in self.image_ids:
-            sample_files = []
-            self.samples.append(sample_files)
-        
-        annos = list(self.anno_df['Target'])
-        self.annotations = [[int(pos) for pos in anno.split(' ')] for anno in annos]
+            test_df = pd.read_csv(os.path.join(self.data_root, TEST_LIST_NAME))
+            self.image_ids = list(test_df['Id'])
 
     def _load_image(self, index):
         img_id = self.image_ids[index]
@@ -87,12 +90,19 @@ class CsvDataset(Dataset):
 
     def __getitem__(self, index):
         image = self._load_image(index)
-        anno = torch.from_numpy(self._load_multi_anno(index))
+
+        if self.phase == 'train' or self.phase == 'val':
+            anno = torch.from_numpy(self._load_multi_anno(index))
 
         if self.augment is not None:
             image = self.augment(image)
 
-        return {
-            'image': image,
-            'anno': anno
-        }
+        if self.phase == 'train' or self.phase == 'val':
+            return {
+                'image': image,
+                'anno': anno
+            }
+        else: # test
+            return {
+                'image': image
+            }

@@ -30,7 +30,7 @@ MULTI_CLASS_NUM = 28
 SCHEDULER_PATIENCE = 3
 LEARNING_RATE = 1e-3
 IMAGE_SIZE = 512
-SCORE_THRESHOLDS = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+SCORE_THRESHOLDS = [0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]
 NUM_WORKERS = 4
 
 def train_val(
@@ -72,7 +72,8 @@ def train_val(
     # val
     with torch.no_grad():
         model.eval()
-        accus = [[] for score in SCORE_THRESHOLDS]
+        all_gts = []
+        all_probs = []
 
         print('Val\t- fold {}, epoch {}...'.format(fold, epoch))
 
@@ -86,27 +87,32 @@ def train_val(
                 outputs = model(inputs)
                 probs = torch.sigmoid(outputs)
 
-                # calc f1 score
-                scores = []
-                for score in SCORE_THRESHOLDS:
-                    results = torch.gt(probs, score)
+                # collect probs and gts
+                # f1 needs to be calc at the end of epoch
+                all_probs.append(probs.detach().cpu())
+                all_gts.append(gts.detach().cpu())
 
-                    f1 = f1_score(
-                        gts.to(dtype=torch.long).cpu().numpy(),
-                        results.detach().to(dtype=torch.long).cpu().numpy(),
-                        average='micro'
-                    )
-                    scores.append(f1)
-
-                [accus[i].append(scores[i]) for i in range(len(SCORE_THRESHOLDS))]
                 pbar.update(1)
 
-            accus = [np.mean(accu) for accu in accus]
+            # calc f1 macro score
+            all_probs = torch.cat(all_probs, dim=0)
+            all_gts = torch.cat(all_gts, dim=0)
+
+            scores = []
+            for score in SCORE_THRESHOLDS:
+                all_results = torch.gt(all_probs, score)
+
+                f1 = f1_score(
+                    all_gts.to(dtype=torch.long).numpy(),
+                    all_results.to(dtype=torch.long).numpy(),
+                    average='macro'
+                )
+                scores.append(f1)
 
         # update scheduler
-        scheduler.step(np.max(accus))
+        scheduler.step(np.max(scores))
 
-    return np.mean(losses), accus
+    return np.mean(losses), scores
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='Simple training script.')
