@@ -53,13 +53,13 @@ class Feature_Network_Wrapper(nn.Module):
 
 def create_network(name, pretrained, num_classes, input_size):
     if name == 'resnet-34':
-        backbone = resnet34(pretrained=pretrained, num_classes=num_classes)
+        backbone = resnet34(pretrained=pretrained, num_classes=num_classes, input_size=input_size)
     elif name == 'resnet-50':
-        backbone = resnet50(pretrained=pretrained, num_classes=num_classes)
+        backbone = resnet50(pretrained=pretrained, num_classes=num_classes, input_size=input_size)
     elif name == 'resnet-101':
         backbone = resnet101(pretrained=pretrained, num_classes=num_classes, input_size=input_size)
     elif name == 'resnet-152':
-        backbone = resnet152(pretrained=pretrained, num_classes=num_classes)
+        backbone = resnet152(pretrained=pretrained, num_classes=num_classes, input_size=input_size)
     elif name == 'densenet-121':
         backbone = densenet121(pretrained=pretrained, num_classes=num_classes)
     elif name == 'densenet-169':
