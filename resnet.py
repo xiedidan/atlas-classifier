@@ -25,6 +25,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 def convert_model(state_dict):
     layer_names = state_dict.keys()
+
     for layer_name in list(layer_names):
         if 'fc' in layer_name:
             del(state_dict[layer_name])
@@ -106,7 +107,7 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, input_size=224, num_classes=1000):
+    def __init__(self, block, layers, num_classes=1000):
         self.inplanes = 64
         super(ResNet, self).__init__()
 
@@ -118,7 +119,7 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.avgpool = nn.AvgPool2d(input_size // 32, stride=1) # kernel_size = input_size / 32
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
@@ -172,7 +173,9 @@ def resnet18(pretrained=False, **kwargs):
     """
     model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
     if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet18']))
+        state_dict = model_zoo.load_url(model_urls['resnet18'])
+        state_dict = convert_model(state_dict)
+        model.load_state_dict(state_dict, strict=False)
     return model
 
 

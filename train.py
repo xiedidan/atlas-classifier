@@ -207,8 +207,7 @@ def main(args=None):
         model = create_network(
             flags.network,
             pretrained=flags.pretrained,
-            num_classes=num_classes,
-            input_size=IMAGE_SIZE
+            num_classes=num_classes
         )
 
         model = model.to(device=device)
