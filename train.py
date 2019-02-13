@@ -123,9 +123,10 @@ def main(args=None):
     parser.add_argument('--device', help='Device to train on', default='cuda:0')
 
     parser.add_argument('--network', help='Feature network type and depth', default='resnet-101')
-    parser.add_argument('--pretrained', help='Finetune pretrained model', action='store_true')
-    parser.add_argument('--dropout', help='Classifier dropout ratio', type=float, default=0.5)
-    parser.add_argument('--label', help='Multi or single label', default='single')
+    parser.add_argument('--pretrained', help='Finetune pretrained model', action='store_true', default=False)
+    parser.add_argument('--alpha', help='Use alpha factor from train set', action='store_true', default=False)
+    parser.add_argument('--dropout', help='Classifier dropout ratio', type=float, default=0.)
+    parser.add_argument('--label', help='Multi or single label', default='multi')
 
     parser.add_argument('--dataset', help='Dataset path', default='./ATLAS')
     parser.add_argument('--data_root', help='Data root path', default='/data/ATLAS')
@@ -207,7 +208,8 @@ def main(args=None):
         model = create_network(
             flags.network,
             pretrained=flags.pretrained,
-            num_classes=num_classes
+            num_classes=num_classes,
+            drop_rate=flags.dropout
         )
 
         model = model.to(device=device)
@@ -216,7 +218,7 @@ def main(args=None):
         # criterion, optimizer and scheduler
         criterion = FocalLoss(
             num_classes=num_classes,
-            alpha=alpha
+            alpha=alpha if flags.alpha else None
         )
 
         optimizer = optim.Adam(

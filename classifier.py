@@ -51,21 +51,21 @@ class Feature_Network_Wrapper(nn.Module):
 
         return out
 
-def create_network(name, pretrained, num_classes):
+def create_network(name, pretrained, num_classes, drop_rate=0.):
     network_type = name.split('-')[0]
     network_depth = int(name.split('-')[1])
 
     if network_type == 'resnet':
         if network_depth == 18:
-            backbone = resnet18(pretrained=pretrained, num_classes=num_classes)
+            backbone = resnet18(pretrained=pretrained, num_classes=num_classes, drop_rate=drop_rate)
         elif network_depth == 34:
-            backbone = resnet34(pretrained=pretrained, num_classes=num_classes)
+            backbone = resnet34(pretrained=pretrained, num_classes=num_classes, drop_rate=drop_rate)
         elif network_depth == 50:
-            backbone = resnet50(pretrained=pretrained, num_classes=num_classes)
+            backbone = resnet50(pretrained=pretrained, num_classes=num_classes, drop_rate=drop_rate)
         elif network_depth == 101:
-            backbone = resnet101(pretrained=pretrained, num_classes=num_classes)
+            backbone = resnet101(pretrained=pretrained, num_classes=num_classes, drop_rate=drop_rate)
         elif network_depth == 152:
-            backbone = resnet152(pretrained=pretrained, num_classes=num_classes)
+            backbone = resnet152(pretrained=pretrained, num_classes=num_classes, drop_rate=drop_rate)
     elif network_type == 'densenet':
         if network_depth == 121:
             backbone = densenet121(pretrained=pretrained, num_classes=num_classes)
