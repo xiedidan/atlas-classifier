@@ -9,6 +9,8 @@ import torchvision.transforms as transforms
 
 from resnet import *
 from densenet import *
+from senet import *
+from bninception import *
 
 class Feature_Network_Wrapper(nn.Module):
     def __init__(self, net_type, network):
@@ -53,7 +55,8 @@ class Feature_Network_Wrapper(nn.Module):
 
 def create_network(name, pretrained, num_classes, drop_rate=0.):
     network_type = name.split('-')[0]
-    network_depth = int(name.split('-')[1])
+    if len(name.split('-')) > 1:
+        network_depth = int(name.split('-')[1])
 
     if network_type == 'resnet':
         if network_depth == 18:
@@ -71,6 +74,13 @@ def create_network(name, pretrained, num_classes, drop_rate=0.):
             backbone = densenet121(pretrained=pretrained, num_classes=num_classes)
         elif network_depth == 169:
             backbone = densenet169(pretrained=pretrained, num_classes=num_classes)
+    elif network_type == 'seresnext':
+        if network_depth == 50:
+            backbone = se_resnext50_32x4d(num_classes=num_classes, pretrained=pretrained)
+        elif network_depth == 101:
+            backbone = se_resnext101_32x4d(num_classes=num_classes, pretrained=pretrained)
+    elif network_type == 'bninception':
+        backbone = bninception(num_classes=num_classes, pretrained=pretrained)
 
     return backbone
 
