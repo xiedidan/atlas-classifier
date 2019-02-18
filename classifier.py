@@ -80,7 +80,7 @@ def create_network(name, pretrained, num_classes, drop_rate=0.):
         elif network_depth == 101:
             backbone = se_resnext101_32x4d(num_classes=num_classes, pretrained=pretrained)
     elif network_type == 'bninception':
-        backbone = bninception(num_classes=num_classes, pretrained=pretrained)
+        backbone = bninception(num_classes=num_classes, pretrained=pretrained, drop_rate=drop_rate)
 
     return backbone
 

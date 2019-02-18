@@ -27,7 +27,7 @@ pretrained_settings = {
 
 class BNInception(nn.Module):
 
-    def __init__(self, num_classes=1000):
+    def __init__(self, num_classes=1000, dropout_p=None):
         super(BNInception, self).__init__()
         inplace = True
         self.conv1_7x7_s2 = nn.Conv2d(INPUT_LAYERS, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3))
@@ -250,6 +250,7 @@ class BNInception(nn.Module):
         self.inception_5b_pool_proj_bn = nn.BatchNorm2d(128, affine=True)
         self.inception_5b_relu_pool_proj = nn.ReLU (inplace)
         self.global_pool = nn.AdaptiveAvgPool2d(1)
+        self.dropout = nn.Dropout(dropout_p) if dropout_p is not None else None
         self.last_linear = nn.Linear (1024, num_classes)
 
     def features(self, input):
@@ -486,6 +487,8 @@ class BNInception(nn.Module):
 
     def logits(self, features):
         x = self.global_pool(features)
+        if self.dropout is not None:
+            x = self.dropout(x)
         x = x.view(x.size(0), -1)
         x = self.last_linear(x)
         return x
@@ -495,10 +498,10 @@ class BNInception(nn.Module):
         x = self.logits(x)
         return x
 
-def bninception(num_classes=1000, pretrained='imagenet'):
+def bninception(num_classes=1000, pretrained='imagenet', drop_rate=None):
     r"""BNInception model architecture from <https://arxiv.org/pdf/1502.03167.pdf>`_ paper.
     """
-    model = BNInception(num_classes=num_classes)
+    model = BNInception(num_classes=num_classes, dropout_p=drop_rate)
     if pretrained is not None and pretrained:
         settings = pretrained_settings['bninception'][pretrained]
         assert num_classes == settings['num_classes'], \
