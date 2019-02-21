@@ -30,10 +30,10 @@ MULTI_CLASS_NUM = 28
 SCHEDULER_PATIENCE = 3
 LEARNING_RATE = 1e-3
 IMAGE_SIZE = 512
-SCORE_THRESHOLDS = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]
+SCORE_THRESHOLDS = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
 NUM_WORKERS = 4
 
-def train_val(
+def train_val_multi_task(
     fold,
     epoch,
     model,
@@ -94,25 +94,52 @@ def train_val(
 
                 pbar.update(1)
 
-            # calc f1 macro score
-            all_probs = torch.cat(all_probs, dim=0)
-            all_gts = torch.cat(all_gts, dim=0)
+            # shape = [C, N]
+            all_probs = torch.t(torch.cat(all_probs, dim=0))
+            all_gts = torch.t(torch.cat(all_gts, dim=0))
 
-            scores = []
-            for score in SCORE_THRESHOLDS:
-                all_results = torch.gt(all_probs, score)
+            # search best threshold for each class
+            threshold_combination = []
+            all_results = []
 
-                f1 = f1_score(
-                    all_gts.to(dtype=torch.long).numpy(),
-                    all_results.to(dtype=torch.long).numpy(),
-                    average='macro'
-                )
-                scores.append(f1)
+            for class_no in range(MULTI_CLASS_NUM):
+                class_scores = []
+                class_results = []
+
+                for threshold in SCORE_THRESHOLDS:
+                    class_prob = all_probs[class_no]
+                    class_gt = all_gts[class_no]
+
+                    class_result = torch.gt(class_prob, threshold)
+                    class_results.append(class_result)
+
+                    f1 = f1_score(
+                        class_gt.to(dtype=torch.long).numpy(),
+                        class_result.to(dtype=torch.long).numpy(),
+                        average='macro'
+                    )
+                    class_scores.append(f1)
+
+                best_class_position = np.argmax(class_scores)
+
+                threshold_combination.append(SCORE_THRESHOLDS[best_class_position])
+                all_results.append(class_results[best_class_position])
+
+            # shape = [N, C]            
+            all_results = torch.t(torch.stack(all_results, dim=0))
+            all_gts = torch.t(all_gts)
+
+            best_score = f1_score(
+                all_gts.to(dtype=torch.long).numpy(),
+                all_results.to(dtype=torch.long).numpy(),
+                average='macro'
+            )
+            # print('val - {} @ {}'.format(best_score, threshold_combination))
 
         # update scheduler
-        scheduler.step(np.max(scores))
+        scheduler.step(best_score)
 
-    return np.mean(losses), scores
+    return np.mean(losses), best_score, threshold_combination
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='Simple training script.')
@@ -124,9 +151,11 @@ def main(args=None):
 
     parser.add_argument('--network', help='Feature network type and depth', default='resnet-101')
     parser.add_argument('--pretrained', help='Finetune pretrained model', action='store_true', default=False)
+    parser.add_argument('--gamma', help='Gamma factor for Focal Loss', type=float, default=2.)
     parser.add_argument('--alpha', help='Use alpha factor from train set', action='store_true', default=False)
     parser.add_argument('--dropout', help='Classifier dropout ratio', type=float, default=0.)
     parser.add_argument('--label', help='Multi or single label', default='multi')
+    parser.add_argument('--task', help='Multi or single task score thresholds', default='multi')
 
     parser.add_argument('--dataset', help='Dataset path', default='./ATLAS')
     parser.add_argument('--data_root', help='Data root path', default='/data/ATLAS')
@@ -218,7 +247,8 @@ def main(args=None):
         # criterion, optimizer and scheduler
         criterion = FocalLoss(
             num_classes=num_classes,
-            alpha=alpha if flags.alpha else None
+            alpha=alpha if flags.alpha else None,
+            gamma=flags.gamma
         )
 
         optimizer = optim.Adam(
@@ -233,32 +263,70 @@ def main(args=None):
             verbose=True
         )
 
+        if flags.task == 'multi':
+            threshold_file = os.path.join(result_path, 'thresholds_fold{}.csv'.format(fold))
+            with open(threshold_file, 'w') as csv:
+                for i in range(MULTI_CLASS_NUM):
+                    if i == MULTI_CLASS_NUM - 1:
+                        csv.write('{}\n'.format(i))
+                    else:
+                        csv.write('{},'.format(i))
+
         for epoch in range(flags.epochs):
-            loss, accuracy = train_val(
-                fold,
-                epoch,
-                model,
-                criterion,
-                optimizer,
-                scheduler,
-                train_loader,
-                val_loader,
-                device
-            )
-            # print('loss: {}\naccu: {}'.format(loss, accuracy))
+            if flags.task == 'multi':
+                loss, accuracy, thresholds = train_val_multi_task(
+                    fold,
+                    epoch,
+                    model,
+                    criterion,
+                    optimizer,
+                    scheduler,
+                    train_loader,
+                    val_loader,
+                    device
+                )
 
-            # save history
-            accus = {}
-            for i, accu in enumerate(accuracy):
-                accus['{}'.format(SCORE_THRESHOLDS[i])] = accu
+                summary_writer.add_scalar('train/{}/loss'.format(fold), loss, epoch)
+                summary_writer.add_scalar('train/{}/accu'.format(fold), accuracy, epoch)
 
-            summary_writer.add_scalar('train/{}/loss'.format(fold), loss, epoch)
-            summary_writer.add_scalars('val/{}/accuracy'.format(fold), accus, epoch)
+                # save thresholds
+                with open(threshold_file, 'a') as csv:
+                    for i, score in enumerate(thresholds):
+                        if i == len(thresholds) - 1:
+                            csv.write('{}\n'.format(score))
+                        else:
+                            csv.write('{},'.format(score))
 
-            # save model
-            model_path = os.path.join(result_path, 'fold{}_epoch{}.pth'.format(fold, epoch))
-            torch.save(model.state_dict(), model_path)
-            print('Save model: {}\n'.format(model_path))
+                # save model
+                model_path = os.path.join(result_path, 'fold{}_epoch{}.pth'.format(fold, epoch))
+                torch.save(model.state_dict(), model_path)
+                print('Save model: {}\n'.format(model_path))
+                
+            else: # single task
+                loss, accuracy = train_val(
+                    fold,
+                    epoch,
+                    model,
+                    criterion,
+                    optimizer,
+                    scheduler,
+                    train_loader,
+                    val_loader,
+                    device
+                )
+
+                # save history
+                accus = {}
+                for i, accu in enumerate(accuracy):
+                    accus['{}'.format(SCORE_THRESHOLDS[i])] = accu
+
+                summary_writer.add_scalar('train/{}/loss'.format(fold), loss, epoch)
+                summary_writer.add_scalars('val/{}/accuracy'.format(fold), accus, epoch)
+
+                # save model
+                model_path = os.path.join(result_path, 'fold{}_epoch{}.pth'.format(fold, epoch))
+                torch.save(model.state_dict(), model_path)
+                print('Save model: {}\n'.format(model_path))
 
 if __name__ == '__main__':
     main()
